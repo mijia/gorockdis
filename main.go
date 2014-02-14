@@ -1,14 +1,20 @@
 package main
 
 import (
-    redis "github.com/dotcloud/go-redis-server"
+    "log"
+    "math/rand"
+    "runtime"
+    "time"
 )
 
+func init() {
+    log.SetFlags(log.LstdFlags)
+    runtime.GOMAXPROCS(runtime.NumCPU())
+    rand.Seed(time.Now().UnixNano())
+}
+
 func main() {
-    server, err := redis.NewServer(redis.DefaultConfig())
-    if err != nil {
-        panic(err)
-    }
+    server := &Server{Address: ":6379"}
     if err := server.ListenAndServe(); err != nil {
         panic(err)
     }

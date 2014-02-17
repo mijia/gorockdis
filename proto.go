@@ -28,11 +28,15 @@ func (r *Request) ExpectArgument(index int) *ErrorReply {
     return nil
 }
 
-func (r *Request) GetString(index int) (string, *ErrorReply) {
+func (r *Request) GetInt(index int) (int, *ErrorReply) {
     if errReply := r.ExpectArgument(index); errReply != nil {
-        return "", errReply
+        return -1, errReply
     }
-    return string(r.Arguments[index]), nil
+    if n, err := strconv.Atoi(string(r.Arguments[index])); err != nil {
+        return -1, ErrExpectInteger
+    } else {
+        return n, nil
+    }
 }
 
 func NewRequest(conn io.ReadCloser) (*Request, error) {
@@ -149,13 +153,30 @@ func (er *ErrorReply) Error() string {
     return er.message
 }
 
-func guardRequestStringArg(index int) GuarderFn {
+func guardRequestByteArg(index int) GuarderFn {
     return func(request *Request) (reflect.Value, *ErrorReply) {
-        value, errReply := request.GetString(index)
-        if errReply != nil {
-            return reflect.ValueOf(""), errReply
+        if err := request.ExpectArgument(index); err != nil {
+            return reflect.ValueOf([]byte{}), nil
+        } else {
+            return reflect.ValueOf(request.Arguments[index]), nil
         }
-        return reflect.ValueOf(value), nil
+    }
+}
+
+func guardRequestByteSliceArg(index int) GuarderFn {
+    return func(request *Request) (reflect.Value, *ErrorReply) {
+        if err := request.ExpectArgument(index); err != nil {
+            return reflect.ValueOf([][]byte{}), nil
+        } else {
+            return reflect.ValueOf(request.Arguments[index:]), nil
+        }
+    }
+}
+
+func guardRequestIntArg(index int) GuarderFn {
+    return func(request *Request) (reflect.Value, *ErrorReply) {
+        n, err := request.GetInt(index)
+        return reflect.ValueOf(n), err
     }
 }
 
@@ -168,6 +189,15 @@ func (r *StatusReply) WriteTo(w io.Writer) (int64, error) {
     return int64(n), err
 }
 
+type IntReply struct {
+    number int
+}
+
+func (r *IntReply) WriteTo(w io.Writer) (int64, error) {
+    n, err := w.Write([]byte(":" + strconv.Itoa(r.number) + "\r\n"))
+    return int64(n), err
+}
+
 type BulkReply struct {
     value []byte
 }
@@ -176,10 +206,37 @@ func (r *BulkReply) WriteTo(w io.Writer) (int64, error) {
     return writeBytes(r.value, w)
 }
 
+type MultiBulkReply struct {
+    values [][]byte
+}
+
+func (r *MultiBulkReply) WriteTo(w io.Writer) (int64, error) {
+    if r.values == nil {
+        return 0, fmt.Errorf("Multi bulk reply found a nil values")
+    }
+    if wrote, err := w.Write([]byte("*" + strconv.Itoa(len(r.values)) + "\r\n")); err != nil {
+        return int64(wrote), err
+    } else {
+        total := int64(wrote)
+        for _, value := range r.values {
+            wroteData, err := writeBytes(value, w)
+            total += wroteData
+            if err != nil {
+                return total, err
+            }
+        }
+        return total, nil
+    }
+}
+
 func NewReply(s *Server, request *Request, value interface{}) (Reply, error) {
     switch v := value.(type) {
-    case string:
-        return &BulkReply{[]byte(v)}, nil
+    case []byte:
+        return &BulkReply{v}, nil
+    case [][]byte:
+        return &MultiBulkReply{v}, nil
+    case int:
+        return &IntReply{v}, nil
     case *StatusReply:
         return v, nil
     default:

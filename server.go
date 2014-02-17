@@ -151,8 +151,12 @@ func (s *Server) newHandlerGuards(handler interface{}, f *reflect.Value) ([]Guar
     }
     for i := inputStart; i < fType.NumIn(); i++ {
         switch fType.In(i) {
-        case reflect.TypeOf(""):
-            guards = append(guards, guardRequestStringArg(i-inputStart))
+        case reflect.TypeOf([]byte{}):
+            guards = append(guards, guardRequestByteArg(i-inputStart))
+        case reflect.TypeOf([][]byte{}):
+            guards = append(guards, guardRequestByteSliceArg(i-inputStart))
+        case reflect.TypeOf(1):
+            guards = append(guards, guardRequestIntArg(i-inputStart))
         default:
             return nil, fmt.Errorf("Argument %d: wrong type %s (%s)", i, fType.In(i), fType.Name())
         }

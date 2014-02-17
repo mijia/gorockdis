@@ -1,6 +1,33 @@
 package main
 
+import (
+    "log"
+)
+
+func NewRocksDBHandler(config Config) *RocksDBHandler {
+    handler := &RocksDBHandler{}
+    handler.dbDir = config.Database.Dbdir
+    handler.dbCount = config.Database.Databases
+    cacheSize, err := parseComputerSize(config.Database.Maxmemory)
+    if err != nil {
+        log.Fatalf("[Config] Format error for [Database] maxmemory=%s", config.Database.Maxmemory)
+    }
+    handler.cacheSize = cacheSize
+
+    if err := handler.Init(); err != nil {
+        log.Fatal(err)
+    }
+    return handler
+}
+
 type RocksDBHandler struct {
+    dbDir     string
+    dbCount   int
+    cacheSize int64
+}
+
+func (rock *RocksDBHandler) Init() error {
+    return nil
 }
 
 func (rock *RocksDBHandler) Info() ([]byte, error) {
@@ -35,3 +62,8 @@ func (rock *RocksDBHandler) Select(db int) error {
 func (rock *RocksDBHandler) Ping() (*StatusReply, error) {
     return &StatusReply{"PONG"}, nil
 }
+
+// Maybe support those,
+// Keys: EXISTS, DUMP(snapshot), EXPIRE, KEYS, SCAN
+// Strings: MSET, DECR, DECRBY, INCR, INCRBY
+// Server: CLIENT LIST, DBSIZE, TIME

@@ -71,6 +71,7 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
         conn = nil
     }()
 
+    reqCount := 0
     for {
         conn.SetReadDeadline(time.Now())
         zeroByte := make([]byte, 0)
@@ -80,6 +81,7 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
         }
 
         conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
+        start := time.Now()
         request, err := NewRequest(conn)
         if err == io.EOF {
             log.Printf("[ServeClient] Detect a closed connection on %s", clientAddr)
@@ -101,6 +103,8 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
                 return err
             }
         }
+        reqCount++
+        log.Printf("[ServeClient] Single shot, e.g. command=%s, duration=%s, reqCount=%d", request.Command, time.Since(start), reqCount)
     }
     return nil
 }

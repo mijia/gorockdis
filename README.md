@@ -11,3 +11,5 @@ GET, SET, MGET, DEL, INFO
 Config:
 Please refer to rockdis.conf for example.
 $ go run *.go -conf=rockdis.conf
+
+Thanks for the idea and code from https://github.com/dotcloud/go-redis-server.

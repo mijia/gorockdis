@@ -107,6 +107,9 @@ func (rh *RocksDBHandler) Get(key []byte) ([]byte, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
     }
+    if key == nil || len(key) == 0 {
+        return nil, fmt.Errorf("wrong number of arguments for 'get' command")
+    }
     ro := rocks.NewReadOptions()
     defer ro.Close()
     return rh.db.Get(ro, key)
@@ -115,6 +118,9 @@ func (rh *RocksDBHandler) Get(key []byte) ([]byte, error) {
 func (rh *RocksDBHandler) Mget(keys [][]byte) ([][]byte, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
+    }
+    if keys == nil || len(keys) == 0 {
+        return nil, fmt.Errorf("wrong number of arguments for 'mget' command")
     }
 
     ro := rocks.NewReadOptions()
@@ -136,6 +142,10 @@ func (rh *RocksDBHandler) Set(key, value []byte) error {
     if rh.db == nil {
         return ErrRocksIsDead
     }
+    if key == nil || len(key) == 0 || value == nil || len(value) == 0 {
+        return fmt.Errorf("wrong number of arguments for 'set' command")
+    }
+
     wo := rocks.NewWriteOptions()
     defer wo.Close()
     return rh.db.Put(wo, key, value)
@@ -145,6 +155,10 @@ func (rh *RocksDBHandler) Del(key []byte, keys ...[]byte) (int, error) {
     if rh.db == nil {
         return 0, ErrRocksIsDead
     }
+    if key == nil || len(key) == 0 {
+        return 0, fmt.Errorf("wrong number of arguments for 'del' command")
+    }
+
     keyData := append([][]byte{key}, keys...)
     count := 0
     wo := rocks.NewWriteOptions()

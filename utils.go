@@ -5,7 +5,7 @@ import (
     "strings"
 )
 
-func parseComputerSize(size string) (int64, error) {
+func parseComputerSize(size string) (int, error) {
     oneKBytes := 1 << 10
     oneMBytes := 1 << 20
     oneGBytes := 1 << 30
@@ -18,11 +18,11 @@ func parseComputerSize(size string) (int64, error) {
     }
     switch bits {
     case 'k':
-        return int64(count * oneKBytes), nil
+        return count * oneKBytes, nil
     case 'm':
-        return int64(count * oneMBytes), nil
+        return count * oneMBytes, nil
     case 'g':
-        return int64(count * oneGBytes), nil
+        return count * oneGBytes, nil
     }
     return 0, fmt.Errorf("[Config] Format error")
 }

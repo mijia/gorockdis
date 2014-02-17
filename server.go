@@ -19,8 +19,9 @@ type HandlerFn func(request *Request) (Reply, error)
 type GuarderFn func(request *Request) (reflect.Value, *ErrorReply)
 
 type Server struct {
-    Address string
-    Methods map[string]HandlerFn
+    Address    string
+    Methods    map[string]HandlerFn
+    MonitorLog bool
 }
 
 func (s *Server) RegisterHandler(handler interface{}) error {
@@ -113,10 +114,15 @@ func (s *Server) ServeRequest(request *Request) (Reply, error) {
     }
 }
 
+func (s *Server) Close() {
+    log.Printf("[Server] Server Stopped.")
+}
+
 func NewServer(config Config) *Server {
     s := &Server{}
     s.Methods = make(map[string]HandlerFn)
     s.Address = fmt.Sprintf("%s:%d", config.Server.Bind, config.Server.Port)
+    s.MonitorLog = config.Server.MonitorLog
     return s
 }
 
@@ -194,7 +200,9 @@ func (s *Server) newHandlerFn(handler interface{}, f *reflect.Value, guards []Gu
                 request.RemoteAddress,
                 request.Command)
         }
-        log.Printf("[Monitor] %s", monitorString)
+        if s.MonitorLog {
+            log.Printf("[Monitor] %s", monitorString)
+        }
 
         var results []reflect.Value
         if f.Type().IsVariadic() {

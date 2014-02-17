@@ -6,19 +6,27 @@ import (
     "fmt"
     "log"
     "math/rand"
+    "os"
+    "os/signal"
     "runtime"
+    "syscall"
     "time"
 )
 
 type Config struct {
     Server struct {
-        Bind string
-        Port int
+        Bind       string
+        Port       int
+        MonitorLog bool
     }
     Database struct {
-        Dbdir     string
-        Databases int
-        Maxmemory string
+        DbDir           string
+        MaxMemory       string
+        CreateIfMissing bool
+        BloomFilter     int
+        Compression     string
+        CompactionStyle string
+        MaxOpenFiles    int
     }
 }
 
@@ -35,16 +43,31 @@ func main() {
 
     rock := NewRocksDBHandler(config)
     server := NewServer(config)
+    defer func() {
+        rock.close()
+        server.Close()
+    }()
+
+    signalChan := make(chan os.Signal, 1)
+    signal.Notify(signalChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGABRT)
+    go func() {
+        s := <-signalChan
+        log.Printf("[Main] Captured the signal %v", s)
+        rock.close()
+        server.Close()
+        os.Exit(0)
+    }()
+
     if err := server.RegisterHandler(rock); err != nil {
-        log.Fatal(err)
+        log.Fatalf("[Main] Register Handler error, %s", err)
     }
     if err := server.ListenAndServe(); err != nil {
-        log.Fatal(err)
+        log.Fatalf("[Main] ListenAndServe error, %s", err)
     }
 }
 
 func init() {
-    log.SetFlags(log.LstdFlags)
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
     runtime.GOMAXPROCS(runtime.NumCPU())
     rand.Seed(time.Now().UnixNano())
 }

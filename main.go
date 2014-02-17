@@ -7,15 +7,19 @@ import (
     "time"
 )
 
+func main() {
+    rock := &RocksDBHandler{}
+    server := NewServer()
+    if err := server.RegisterHandler(rock); err != nil {
+        log.Fatal(err)
+    }
+    if err := server.ListenAndServe(); err != nil {
+        log.Fatal(err)
+    }
+}
+
 func init() {
     log.SetFlags(log.LstdFlags)
     runtime.GOMAXPROCS(runtime.NumCPU())
     rand.Seed(time.Now().UnixNano())
-}
-
-func main() {
-    server := &Server{Address: ":6379"}
-    if err := server.ListenAndServe(); err != nil {
-        panic(err)
-    }
 }

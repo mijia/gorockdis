@@ -6,14 +6,18 @@ import (
     "fmt"
     rocks "github.com/tecbot/gorocksdb"
     "log"
+    "strconv"
     "strings"
 )
 
 const (
-    kRedisString   = "string"
-    kRedisList     = "list"
-    kRedisHash     = "hash"
-    kTypeKeyPrefix = "__*type*__"
+    kRedisString = "string"
+    kRedisList   = "list"
+    kRedisHash   = "hash"
+)
+
+var (
+    kTypeKeyPrefix = []byte("__*type*__")
 )
 
 type RedisObject struct {
@@ -128,8 +132,82 @@ func (rh *RocksDBHandler) Close() {
     log.Printf("[RocksDBHandler] Closed.")
 }
 
+func (rh *RocksDBHandler) getTypeKey(key []byte) []byte {
+    return append(kTypeKeyPrefix, key...)
+}
+
+func (rh *RocksDBHandler) getKeyType(key []byte) (string, error) {
+    if rh.db == nil {
+        return "", ErrRocksIsDead
+    }
+    if key == nil || len(key) == 0 {
+        return "", ErrWrongArgumentsCount
+    }
+
+    options := rocks.NewDefaultReadOptions()
+    if slice, err := rh.db.Get(options, rh.getTypeKey(key)); err == nil {
+        defer slice.Free()
+        return string(slice.Data()), nil
+    } else {
+        return "", err
+    }
+}
+
 func (rh *RocksDBHandler) FullMerge(key, existingValue []byte, operands [][]byte) ([]byte, bool) {
-    println("FullMerge called", string(key))
+    fmt.Println("FullMerge called.")
+    var redisObj RedisObject
+    var err error
+
+    keyType, err := rh.getKeyType(key)
+    if err != nil {
+        return nil, false
+    }
+    var emptyData interface{}
+    switch keyType {
+    case kRedisString:
+        emptyData = []byte{}
+    default:
+        emptyData = [][]byte{}
+    }
+
+    if existingValue == nil || len(existingValue) == 0 {
+        redisObj = RedisObject{keyType, emptyData}
+    } else {
+        redisObj, err = rh.decode(existingValue)
+        if err != nil {
+            return nil, false
+        }
+        if redisObj.Type != keyType {
+            redisObj.Type = keyType
+            redisObj.Data = emptyData
+        }
+    }
+
+    fmt.Println("Before Merge")
+    fmt.Println(string(key), redisObj)
+
+    if redisObj.Type == kRedisString {
+        sum, err := strconv.ParseInt(string(redisObj.Data.([]byte)), 10, 64)
+        if err != nil {
+            sum = 0
+        }
+        for _, operand := range operands {
+            if n, err := strconv.ParseInt(string(operand), 10, 64); err == nil {
+                sum += n
+            }
+        }
+        redisObj.Data = []byte(fmt.Sprintf("%d", sum))
+    }
+
+    fmt.Println("After Merge")
+    fmt.Println(string(key), redisObj)
+
+    if redisObj.Type == kRedisString {
+        if data, err := rh.encode(redisObj); err == nil {
+            return data, true
+        }
+    }
+
     return nil, false
 }
 
@@ -138,7 +216,7 @@ func (rh *RocksDBHandler) PartialMerge(key, leftOperand, rightOperand []byte) ([
 }
 
 func (rh *RocksDBHandler) Name() string {
-    return "gorockdis_merger"
+    return "GoRockdisMergeOperator"
 }
 
 var (
@@ -159,26 +237,18 @@ func (rh *RocksDBHandler) copySlice(slice *rocks.Slice, toFree bool) []byte {
 }
 
 func (rh *RocksDBHandler) loadRedisObject(options *rocks.ReadOptions, key []byte) (RedisObject, error) {
-    empty := RedisObject{}
     slice, err := rh.db.Get(options, key)
     if err != nil {
         log.Printf("[loadRedisObject] Error when GET < RocksDB, %s", err)
-        return empty, err
+        return RedisObject{}, err
     }
 
     data := rh.copySlice(slice, true)
     if data == nil || len(data) == 0 {
-        return empty, ErrDoesNotExist
+        return RedisObject{}, ErrDoesNotExist
     }
 
-    var obj RedisObject
-    buffer := bytes.NewBuffer(data)
-    decoder := gob.NewDecoder(buffer)
-    if err := decoder.Decode(&obj); err != nil {
-        log.Printf("[loadRedisObject] Error when decode object from key[%s], %s", string(key), err)
-        return empty, err
-    }
-    return obj, nil
+    return rh.decode(data)
 }
 
 func (rh *RocksDBHandler) saveRedisObject(options *rocks.WriteOptions, key []byte, value interface{}, objType string) error {
@@ -186,19 +256,39 @@ func (rh *RocksDBHandler) saveRedisObject(options *rocks.WriteOptions, key []byt
         Type: objType,
         Data: value,
     }
-    buffer := new(bytes.Buffer)
-    encoder := gob.NewEncoder(buffer)
-    if err := encoder.Encode(obj); err != nil {
+    data, err := rh.encode(obj)
+    if err != nil {
         return err
     }
 
     batch := rocks.NewWriteBatch()
-    typeKey := append([]byte(kTypeKeyPrefix), key...)
-    batch.Put(typeKey, []byte(objType))
-    batch.Put(key, buffer.Bytes())
-    err := rh.db.Write(options, batch)
+    defer batch.Destroy()
+    batch.Put(rh.getTypeKey(key), []byte(objType))
+    batch.Put(key, data)
+    err = rh.db.Write(options, batch)
     if err != nil {
         log.Printf("[saveRedisObject] Error when PUT > RocksDB, %s", err)
     }
     return err
+}
+
+func (rh *RocksDBHandler) decode(data []byte) (RedisObject, error) {
+    var obj RedisObject
+    buffer := bytes.NewBuffer(data)
+    decoder := gob.NewDecoder(buffer)
+    if err := decoder.Decode(&obj); err != nil {
+        log.Printf("[Decode] Error when decode object, %s", err)
+        return RedisObject{}, err
+    }
+    return obj, nil
+}
+
+func (rh *RocksDBHandler) encode(rObj RedisObject) ([]byte, error) {
+    buffer := new(bytes.Buffer)
+    encoder := gob.NewEncoder(buffer)
+    if err := encoder.Encode(rObj); err != nil {
+        log.Printf("[Encode] Error when encode object, %s", err)
+        return nil, err
+    }
+    return buffer.Bytes(), nil
 }

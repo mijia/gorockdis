@@ -2,6 +2,7 @@ package main
 
 import (
     rocks "github.com/tecbot/gorocksdb"
+    "strconv"
 )
 
 func (rh *RocksDBHandler) RedisIncrBy(key, value []byte) ([]byte, error) {
@@ -11,8 +12,44 @@ func (rh *RocksDBHandler) RedisIncrBy(key, value []byte) ([]byte, error) {
     if key == nil || len(key) == 0 || value == nil || len(value) == 0 {
         return nil, ErrWrongArgumentsCount
     }
-    //TODO
-    return nil, nil
+
+    firstShot := false
+    if keyType, err := rh.getKeyType(key); err != nil {
+        return nil, err
+    } else {
+        if keyType != "" && keyType != kRedisString {
+            return nil, ErrWrongTypeRedisObject
+        }
+        if keyType == "" {
+            firstShot = true
+        }
+    }
+
+    if _, err := strconv.ParseInt(string(value), 10, 64); err != nil {
+        return nil, ErrNotNumber
+    }
+
+    options := rocks.NewDefaultWriteOptions()
+    defer options.Destroy()
+    batch := rocks.NewWriteBatch()
+    defer batch.Destroy()
+    batch.Put(rh.getTypeKey(key), []byte(kRedisString))
+    if firstShot {
+        // This is a work around because rocksdb would crash if the merge is the first operation.
+        // Please refer to test/merge_fail.go
+        // * NO, this won't work after a restart!
+        dumpObject := RedisObject{kRedisString, []byte("0")}
+        value, err := rh.encode(dumpObject)
+        if err != nil {
+            return nil, err
+        }
+        batch.Put(key, value)
+    }
+    batch.Merge(key, value)
+    if err := rh.db.Write(options, batch); err != nil {
+        return nil, err
+    }
+    return rh.RedisGet(key)
 }
 
 func (rh *RocksDBHandler) RedisGetSet(key, value []byte) ([]byte, error) {

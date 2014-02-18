@@ -8,10 +8,14 @@ Dependencies:
 * go get code.google.com/p/gcfg
 
 Support commands:
-GET, SET, MGET, DEL, INFO
+* Keys: del, type, exists, keys
+* Strings: getset, get, set, mget, mset
 
 Config:
 Please refer to rockdis.conf for example.
 $ go run *.go -conf=rockdis.conf
 
 Thanks for the idea and code from https://github.com/dotcloud/go-redis-server
+
+Notes:
+* Got stuck with merge funcs, since it gives me a segmentation violation, take test/merge_fail.go as a case.

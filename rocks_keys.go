@@ -24,11 +24,12 @@ func (rh *RocksDBHandler) RedisDel(key []byte, keys ...[]byte) (int, error) {
         _, err := rh.loadRedisObject(readOptions, dKey)
         if err == nil {
             batch := rocks.NewWriteBatch()
-            batch.Delete(append([]byte(kTypeKeyPrefix), dKey...))
+            batch.Delete(rh.getTypeKey(dKey))
             batch.Delete(dKey)
             if err := rh.db.Write(writeOptions, batch); err == nil {
                 count++
             }
+            batch.Destroy()
         }
     }
     return count, nil
@@ -98,7 +99,7 @@ func (rh *RocksDBHandler) RedisKeys(pattern []byte) ([][]byte, error) {
     for ; it.Valid(); it.Next() {
         key := it.Key()
         dKey := rh.copySlice(key, false)
-        // if bytes.HasPrefix(dKey, []byte(kTypeKeyPrefix)) {
+        // if bytes.HasPrefix(dKey, kTypeKeyPrefix) {
         //     continue
         // }
         if !bytes.HasPrefix(dKey, pattern) {

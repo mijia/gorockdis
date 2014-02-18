@@ -28,14 +28,16 @@ func (s *Server) RegisterHandler(handler interface{}) error {
     hType := reflect.TypeOf(handler)
     for i := 0; i < hType.NumMethod(); i++ {
         method := hType.Method(i)
-        if method.Name[0] >= 'a' && method.Name[0] <= 'z' {
+        if !strings.HasPrefix(method.Name, "Redis") {
             continue
         }
         hFn, err := s.newHandler(handler, &method.Func)
         if err != nil {
             return err
         }
-        s.Methods[strings.ToLower(method.Name)] = hFn
+        methodName := strings.ToLower(method.Name[5:])
+        s.Methods[methodName] = hFn
+        log.Printf("[RegisterHandler] Registered supported method <%s>", methodName)
     }
     return nil
 }

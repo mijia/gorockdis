@@ -2,26 +2,32 @@ package main
 
 import (
     "fmt"
-    rocks "github.com/mijia/gorocks"
+    rocks "github.com/tecbot/gorocksdb"
     "log"
     "strings"
 )
 
 func NewRocksDBHandler(config Config) *RocksDBHandler {
-    handler := &RocksDBHandler{}
-    handler.dbDir = config.Database.DbDir
     cacheSize, err := parseComputerSize(config.Database.MaxMemory)
     if err != nil {
         log.Fatalf("[Config] Format error for [Database] maxmemory=%s", config.Database.MaxMemory)
     }
+    blockSize, err := parseComputerSize(config.Database.BlockSize)
+    if err != nil {
+        log.Fatalf("[Config] Format error for [Database] blocksize=%s", config.Database.BlockSize)
+    }
+
+    handler := &RocksDBHandler{}
+    handler.dbDir = config.Database.DbDir
     handler.cacheSize = cacheSize
+    handler.blockSize = blockSize
     handler.createIfMissing = config.Database.CreateIfMissing
     handler.bloomFilter = config.Database.BloomFilter
     handler.compression = config.Database.Compression
     handler.compactionStyle = config.Database.CompactionStyle
     handler.maxOpenFiles = config.Database.MaxOpenFiles
 
-    if err := handler.init(); err != nil {
+    if err := handler.Init(); err != nil {
         log.Fatal(err)
     }
     return handler
@@ -30,6 +36,7 @@ func NewRocksDBHandler(config Config) *RocksDBHandler {
 type RocksDBHandler struct {
     dbDir           string
     cacheSize       int
+    blockSize       int
     createIfMissing bool
     bloomFilter     int
     compression     string
@@ -40,9 +47,10 @@ type RocksDBHandler struct {
     db      *rocks.DB
 }
 
-func (rh *RocksDBHandler) init() error {
-    rh.options = rocks.NewOptions()
-    rh.options.SetCache(rocks.NewLRUCache(rh.cacheSize))
+func (rh *RocksDBHandler) Init() error {
+    rh.options = rocks.NewDefaultOptions()
+    rh.options.SetBlockCache(rocks.NewLRUCache(rh.cacheSize))
+    rh.options.SetBlockSize(rh.blockSize)
     rh.options.SetCreateIfMissing(rh.createIfMissing)
     if rh.bloomFilter > 0 {
         rh.options.SetFilterPolicy(rocks.NewBloomFilter(rh.bloomFilter))
@@ -50,21 +58,28 @@ func (rh *RocksDBHandler) init() error {
     if rh.maxOpenFiles > 0 {
         rh.options.SetMaxOpenFiles(rh.maxOpenFiles)
     }
-    if rh.compression == "snappy" {
-        rh.options.SetCompression(rocks.SnappyCompression)
-    } else {
+
+    switch rh.compression {
+    case "no":
         rh.options.SetCompression(rocks.NoCompression)
-    }
-    switch rh.compactionStyle {
-    case "level":
-        rh.options.SetCompactionStyle(rocks.LevelStyleCompaction)
-    case "universal":
-        rh.options.SetCompactionStyle(rocks.UniversalStyleCompaction)
+    case "snappy":
+        rh.options.SetCompression(rocks.SnappyCompression)
+    case "zlib":
+        rh.options.SetCompression(rocks.ZlibCompression)
+    case "bzip2":
+        rh.options.SetCompression(rocks.BZip2Compression)
     }
 
-    db, err := rocks.Open(rh.dbDir, rh.options)
+    switch rh.compactionStyle {
+    case "level":
+        rh.options.SetCompactionStyle(rocks.LevelCompactionStyle)
+    case "universal":
+        rh.options.SetCompactionStyle(rocks.UniversalCompactionStyle)
+    }
+
+    db, err := rocks.OpenDb(rh.options, rh.dbDir)
     if err != nil {
-        rh.close()
+        rh.Close()
         return err
     }
     rh.db = db
@@ -72,6 +87,7 @@ func (rh *RocksDBHandler) init() error {
     infos := []string{
         fmt.Sprintf("dbDir=%s", rh.dbDir),
         fmt.Sprintf("cacheSize=%d", rh.cacheSize),
+        fmt.Sprintf("blockSize=%d", rh.blockSize),
         fmt.Sprintf("createIfMissing=%v", rh.createIfMissing),
         fmt.Sprintf("bloomFilter=%d", rh.bloomFilter),
         fmt.Sprintf("compression=%s", rh.compression),
@@ -82,9 +98,9 @@ func (rh *RocksDBHandler) init() error {
     return nil
 }
 
-func (rh *RocksDBHandler) close() {
+func (rh *RocksDBHandler) Close() {
     if rh.options != nil {
-        rh.options.Close()
+        rh.options.Destroy()
     }
     if rh.db != nil {
         rh.db.Close()
@@ -96,26 +112,35 @@ var (
     ErrRocksIsDead = fmt.Errorf("RocksDB is dead")
 )
 
-func (rh *RocksDBHandler) Info() ([]byte, error) {
+func (rh *RocksDBHandler) RedisInfo() ([]byte, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
     }
     return []byte("TBD\r\n"), nil
 }
 
-func (rh *RocksDBHandler) Get(key []byte) ([]byte, error) {
+func (rh *RocksDBHandler) copyAndFreeSlice(slice *rocks.Slice) []byte {
+    data := make([]byte, slice.Size())
+    copy(data, slice.Data())
+    slice.Free()
+    return data
+}
+
+func (rh *RocksDBHandler) RedisGet(key []byte) ([]byte, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
     }
     if key == nil || len(key) == 0 {
         return nil, fmt.Errorf("wrong number of arguments for 'get' command")
     }
-    ro := rocks.NewReadOptions()
-    defer ro.Close()
-    return rh.db.Get(ro, key)
+    ro := rocks.NewDefaultReadOptions()
+    defer ro.Destroy()
+
+    slice, err := rh.db.Get(ro, key)
+    return rh.copyAndFreeSlice(slice), err
 }
 
-func (rh *RocksDBHandler) Mget(keys [][]byte) ([][]byte, error) {
+func (rh *RocksDBHandler) RedisMget(keys [][]byte) ([][]byte, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
     }
@@ -123,13 +148,13 @@ func (rh *RocksDBHandler) Mget(keys [][]byte) ([][]byte, error) {
         return nil, fmt.Errorf("wrong number of arguments for 'mget' command")
     }
 
-    ro := rocks.NewReadOptions()
-    defer ro.Close()
+    ro := rocks.NewDefaultReadOptions()
+    defer ro.Destroy()
 
     results := make([][]byte, len(keys))
     for i := range results {
-        if data, err := rh.db.Get(ro, keys[i]); err == nil {
-            results[i] = data
+        if slice, err := rh.db.Get(ro, keys[i]); err == nil {
+            results[i] = rh.copyAndFreeSlice(slice)
         } else {
             results[i] = make([]byte, 0)
             log.Printf("[Mget] Error when accessing rocksdb for key %s, %s", string(keys[i]), err)
@@ -138,7 +163,7 @@ func (rh *RocksDBHandler) Mget(keys [][]byte) ([][]byte, error) {
     return results, nil
 }
 
-func (rh *RocksDBHandler) Set(key, value []byte) error {
+func (rh *RocksDBHandler) RedisSet(key, value []byte) error {
     if rh.db == nil {
         return ErrRocksIsDead
     }
@@ -146,12 +171,13 @@ func (rh *RocksDBHandler) Set(key, value []byte) error {
         return fmt.Errorf("wrong number of arguments for 'set' command")
     }
 
-    wo := rocks.NewWriteOptions()
-    defer wo.Close()
+    wo := rocks.NewDefaultWriteOptions()
+    defer wo.Destroy()
+
     return rh.db.Put(wo, key, value)
 }
 
-func (rh *RocksDBHandler) Del(key []byte, keys ...[]byte) (int, error) {
+func (rh *RocksDBHandler) RedisDel(key []byte, keys ...[]byte) (int, error) {
     if rh.db == nil {
         return 0, ErrRocksIsDead
     }
@@ -161,8 +187,8 @@ func (rh *RocksDBHandler) Del(key []byte, keys ...[]byte) (int, error) {
 
     keyData := append([][]byte{key}, keys...)
     count := 0
-    wo := rocks.NewWriteOptions()
-    defer wo.Close()
+    wo := rocks.NewDefaultWriteOptions()
+    defer wo.Destroy()
 
     for _, dKey := range keyData {
         if err := rh.db.Delete(wo, dKey); err == nil {
@@ -176,14 +202,14 @@ func (rh *RocksDBHandler) Del(key []byte, keys ...[]byte) (int, error) {
     return count, nil
 }
 
-func (rh *RocksDBHandler) Select(db int) error {
+func (rh *RocksDBHandler) RedisSelect(db int) error {
     if rh.db == nil {
         return ErrRocksIsDead
     }
     return nil
 }
 
-func (rh *RocksDBHandler) Ping() (*StatusReply, error) {
+func (rh *RocksDBHandler) RedisPing() (*StatusReply, error) {
     if rh.db == nil {
         return nil, ErrRocksIsDead
     }

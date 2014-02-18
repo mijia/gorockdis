@@ -22,6 +22,7 @@ type Config struct {
     Database struct {
         DbDir           string
         MaxMemory       string
+        BlockSize       string
         CreateIfMissing bool
         BloomFilter     int
         Compression     string
@@ -44,7 +45,7 @@ func main() {
     rock := NewRocksDBHandler(config)
     server := NewServer(config)
     defer func() {
-        rock.close()
+        rock.Close()
         server.Close()
     }()
 
@@ -53,7 +54,7 @@ func main() {
     go func() {
         s := <-signalChan
         log.Printf("[Main] Captured the signal %v", s)
-        rock.close()
+        rock.Close()
         server.Close()
         os.Exit(0)
     }()

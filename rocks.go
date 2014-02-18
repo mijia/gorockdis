@@ -1,11 +1,28 @@
 package main
 
 import (
+    "bytes"
+    "encoding/gob"
     "fmt"
     rocks "github.com/tecbot/gorocksdb"
     "log"
     "strings"
 )
+
+const (
+    kRedisString = "string"
+    kRedisList   = "list"
+    kRedisHash   = "hash"
+)
+
+type RedisObject struct {
+    Type string
+    Data interface{}
+}
+
+func init() {
+    gob.Register(&RedisObject{})
+}
 
 func NewRocksDBHandler(config Config) *RocksDBHandler {
     cacheSize, err := parseComputerSize(config.Database.MaxMemory)
@@ -109,114 +126,58 @@ func (rh *RocksDBHandler) Close() {
 }
 
 var (
-    ErrRocksIsDead = fmt.Errorf("RocksDB is dead")
+    ErrRocksIsDead          = fmt.Errorf("RocksDB is dead")
+    ErrDoesNotExist         = fmt.Errorf("There is no such object")
+    ErrWrongArgumentsCount  = fmt.Errorf("Wrong number of arguments for command")
+    ErrWrongTypeRedisObject = fmt.Errorf("Operation against a key holding the wrong kind of value")
+    ErrNotNumber            = fmt.Errorf("value is not an integer or out of range")
 )
 
-func (rh *RocksDBHandler) RedisInfo() ([]byte, error) {
-    if rh.db == nil {
-        return nil, ErrRocksIsDead
-    }
-    return []byte("TBD\r\n"), nil
-}
-
-func (rh *RocksDBHandler) copyAndFreeSlice(slice *rocks.Slice) []byte {
+func (rh *RocksDBHandler) copySlice(slice *rocks.Slice, toFree bool) []byte {
     data := make([]byte, slice.Size())
     copy(data, slice.Data())
-    slice.Free()
+    if toFree {
+        slice.Free()
+    }
     return data
 }
 
-func (rh *RocksDBHandler) RedisGet(key []byte) ([]byte, error) {
-    if rh.db == nil {
-        return nil, ErrRocksIsDead
+func (rh *RocksDBHandler) loadRedisObject(options *rocks.ReadOptions, key []byte) (RedisObject, error) {
+    empty := RedisObject{}
+    slice, err := rh.db.Get(options, key)
+    if err != nil {
+        log.Printf("[loadRedisObject] Error when GET < RocksDB, %s", err)
+        return empty, err
     }
-    if key == nil || len(key) == 0 {
-        return nil, fmt.Errorf("wrong number of arguments for 'get' command")
-    }
-    ro := rocks.NewDefaultReadOptions()
-    defer ro.Destroy()
 
-    slice, err := rh.db.Get(ro, key)
-    return rh.copyAndFreeSlice(slice), err
+    data := rh.copySlice(slice, true)
+    if data == nil || len(data) == 0 {
+        return empty, ErrDoesNotExist
+    }
+
+    var obj RedisObject
+    buffer := bytes.NewBuffer(data)
+    decoder := gob.NewDecoder(buffer)
+    if err := decoder.Decode(&obj); err != nil {
+        log.Printf("[loadRedisObject] Error when decode object from key[%s], %s", string(key), err)
+        return empty, err
+    }
+    return obj, nil
 }
 
-func (rh *RocksDBHandler) RedisMget(keys [][]byte) ([][]byte, error) {
-    if rh.db == nil {
-        return nil, ErrRocksIsDead
+func (rh *RocksDBHandler) saveRedisObject(options *rocks.WriteOptions, key []byte, value interface{}, objType string) error {
+    obj := RedisObject{
+        Type: objType,
+        Data: value,
     }
-    if keys == nil || len(keys) == 0 {
-        return nil, fmt.Errorf("wrong number of arguments for 'mget' command")
+    buffer := new(bytes.Buffer)
+    encoder := gob.NewEncoder(buffer)
+    if err := encoder.Encode(obj); err != nil {
+        return err
     }
-
-    ro := rocks.NewDefaultReadOptions()
-    defer ro.Destroy()
-
-    results := make([][]byte, len(keys))
-    for i := range results {
-        if slice, err := rh.db.Get(ro, keys[i]); err == nil {
-            results[i] = rh.copyAndFreeSlice(slice)
-        } else {
-            results[i] = make([]byte, 0)
-            log.Printf("[Mget] Error when accessing rocksdb for key %s, %s", string(keys[i]), err)
-        }
+    err := rh.db.Put(options, key, buffer.Bytes())
+    if err != nil {
+        log.Printf("[saveRedisObject] Error when PUT > RocksDB, %s", err)
     }
-    return results, nil
+    return err
 }
-
-func (rh *RocksDBHandler) RedisSet(key, value []byte) error {
-    if rh.db == nil {
-        return ErrRocksIsDead
-    }
-    if key == nil || len(key) == 0 || value == nil || len(value) == 0 {
-        return fmt.Errorf("wrong number of arguments for 'set' command")
-    }
-
-    wo := rocks.NewDefaultWriteOptions()
-    defer wo.Destroy()
-
-    return rh.db.Put(wo, key, value)
-}
-
-func (rh *RocksDBHandler) RedisDel(key []byte, keys ...[]byte) (int, error) {
-    if rh.db == nil {
-        return 0, ErrRocksIsDead
-    }
-    if key == nil || len(key) == 0 {
-        return 0, fmt.Errorf("wrong number of arguments for 'del' command")
-    }
-
-    keyData := append([][]byte{key}, keys...)
-    count := 0
-    wo := rocks.NewDefaultWriteOptions()
-    defer wo.Destroy()
-
-    for _, dKey := range keyData {
-        if err := rh.db.Delete(wo, dKey); err == nil {
-            count++
-        } else {
-            if len(keyData) > 1 {
-                return 0, nil
-            }
-        }
-    }
-    return count, nil
-}
-
-func (rh *RocksDBHandler) RedisSelect(db int) error {
-    if rh.db == nil {
-        return ErrRocksIsDead
-    }
-    return nil
-}
-
-func (rh *RocksDBHandler) RedisPing() (*StatusReply, error) {
-    if rh.db == nil {
-        return nil, ErrRocksIsDead
-    }
-    return &StatusReply{"PONG"}, nil
-}
-
-// Maybe support those,
-// Keys: EXISTS, DUMP(snapshot), EXPIRE, KEYS, SCAN
-// Strings: MSET, DECR, DECRBY, INCR, INCRBY
-// Server: CLIENT LIST, DBSIZE, TIME

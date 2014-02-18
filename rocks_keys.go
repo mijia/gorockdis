@@ -1,8 +1,8 @@
 package main
 
 import (
+    "bytes"
     rocks "github.com/tecbot/gorocksdb"
-    "strings"
 )
 
 func (rh *RocksDBHandler) RedisDel(key []byte, keys ...[]byte) (int, error) {
@@ -23,7 +23,10 @@ func (rh *RocksDBHandler) RedisDel(key []byte, keys ...[]byte) (int, error) {
     for _, dKey := range keyData {
         _, err := rh.loadRedisObject(readOptions, dKey)
         if err == nil {
-            if err := rh.db.Delete(writeOptions, dKey); err == nil {
+            batch := rocks.NewWriteBatch()
+            batch.Delete(append([]byte(kTypeKeyPrefix), dKey...))
+            batch.Delete(dKey)
+            if err := rh.db.Write(writeOptions, batch); err == nil {
                 count++
             }
         }
@@ -80,9 +83,8 @@ func (rh *RocksDBHandler) RedisKeys(pattern []byte) ([][]byte, error) {
     if pattern == nil || len(pattern) == 0 {
         return nil, ErrWrongArgumentsCount
     }
-    strPattern := string(pattern)
-    if strPattern[len(strPattern)-1] == '*' {
-        strPattern = strPattern[:len(strPattern)-1]
+    if pattern[len(pattern)-1] == '*' {
+        pattern = pattern[:len(pattern)-1]
     }
 
     options := rocks.NewDefaultReadOptions()
@@ -92,11 +94,14 @@ func (rh *RocksDBHandler) RedisKeys(pattern []byte) ([][]byte, error) {
     data := make([][]byte, 0)
     it := rh.db.NewIterator(options)
     defer it.Close()
-    it.Seek([]byte(strPattern))
+    it.Seek(pattern)
     for ; it.Valid(); it.Next() {
         key := it.Key()
         dKey := rh.copySlice(key, false)
-        if !strings.HasPrefix(string(dKey), strPattern) {
+        // if bytes.HasPrefix(dKey, []byte(kTypeKeyPrefix)) {
+        //     continue
+        // }
+        if !bytes.HasPrefix(dKey, pattern) {
             break
         }
         data = append(data, dKey)

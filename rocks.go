@@ -10,9 +10,10 @@ import (
 )
 
 const (
-    kRedisString = "string"
-    kRedisList   = "list"
-    kRedisHash   = "hash"
+    kRedisString   = "string"
+    kRedisList     = "list"
+    kRedisHash     = "hash"
+    kTypeKeyPrefix = "__*type*__"
 )
 
 type RedisObject struct {
@@ -94,6 +95,8 @@ func (rh *RocksDBHandler) Init() error {
         rh.options.SetCompactionStyle(rocks.UniversalCompactionStyle)
     }
 
+    rh.options.SetMergeOperator(rocks.NewMergeOperator(rh))
+
     db, err := rocks.OpenDb(rh.options, rh.dbDir)
     if err != nil {
         rh.Close()
@@ -123,6 +126,19 @@ func (rh *RocksDBHandler) Close() {
         rh.db.Close()
     }
     log.Printf("[RocksDBHandler] Closed.")
+}
+
+func (rh *RocksDBHandler) FullMerge(key, existingValue []byte, operands [][]byte) ([]byte, bool) {
+    println("FullMerge called", string(key))
+    return nil, false
+}
+
+func (rh *RocksDBHandler) PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, bool) {
+    return nil, false
+}
+
+func (rh *RocksDBHandler) Name() string {
+    return "gorockdis_merger"
 }
 
 var (
@@ -175,7 +191,12 @@ func (rh *RocksDBHandler) saveRedisObject(options *rocks.WriteOptions, key []byt
     if err := encoder.Encode(obj); err != nil {
         return err
     }
-    err := rh.db.Put(options, key, buffer.Bytes())
+
+    batch := rocks.NewWriteBatch()
+    typeKey := append([]byte(kTypeKeyPrefix), key...)
+    batch.Put(typeKey, []byte(objType))
+    batch.Put(key, buffer.Bytes())
+    err := rh.db.Write(options, batch)
     if err != nil {
         log.Printf("[saveRedisObject] Error when PUT > RocksDB, %s", err)
     }

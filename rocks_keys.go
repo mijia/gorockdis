@@ -112,3 +112,8 @@ func (rh *RocksDBHandler) RedisKeys(pattern []byte) ([][]byte, error) {
     }
     return data, nil
 }
+
+// This is a dummy stub, since we are using this on redis.
+func (rh *RocksDBHandler) RedisExpire(key []byte, timeout int) (int, error) {
+    return 1, nil
+}

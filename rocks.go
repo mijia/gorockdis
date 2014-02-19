@@ -111,6 +111,7 @@ func (rh *RocksDBHandler) Init() error {
     rh.dsMergers = make(map[string]DataStructureMerger)
     rh.dsMergers[kRedisString] = &StringMerger{}
     rh.dsMergers[kRedisList] = &ListMerger{}
+    rh.dsMergers[kRedisHash] = &HashMerger{}
 
     if rh.maxMerge > 0 {
         rh.options.SetMaxSuccessiveMerges(rh.maxMerge)

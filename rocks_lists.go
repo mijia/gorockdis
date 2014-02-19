@@ -208,7 +208,6 @@ func (m *ListMerger) FullMerge(existingObject *RedisObject, operands [][]byte) b
     if !ok {
         listData = [][]byte{}
     }
-    fmt.Println("Before", listData)
     for _, operand := range operands {
         if obj, err := decode(operand, reflect.TypeOf(ListOperand{})); err == nil {
             op := obj.(ListOperand)
@@ -230,7 +229,6 @@ func (m *ListMerger) FullMerge(existingObject *RedisObject, operands [][]byte) b
             }
         }
     }
-    fmt.Println("After", listData)
     existingObject.Data = listData
     return true
 }

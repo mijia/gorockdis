@@ -11,6 +11,7 @@ Support commands:
 * Keys: del, type, exists, keys
 * Strings: getset, get, set, mget, mset, append, incr, incrby, decr, decrby
 * Lists: lpush, rpush, lpop, rpop, lrange, lindex, llen
+* Hashes: hset, hget, hgetall, hexists, hdel, hkeys, hvals, hlen, hmget, hmset
 
 Config:
 Please refer to rockdis.conf for example.

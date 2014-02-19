@@ -68,6 +68,9 @@ func (rh *RocksDBHandler) RedisGet(key []byte) ([]byte, error) {
     if err := rh.checkRedisCall(key); err != nil {
         return nil, err
     }
+    if err := rh.checkKeyType(key, kRedisString); err != nil {
+        return nil, err
+    }
 
     options := rocks.NewDefaultReadOptions()
     defer options.Destroy()
@@ -77,9 +80,6 @@ func (rh *RocksDBHandler) RedisGet(key []byte) ([]byte, error) {
         }
         return nil, err
     } else {
-        if obj.Type != kRedisString {
-            return nil, ErrWrongTypeRedisObject
-        }
         return obj.Data.([]byte), err
     }
 }
@@ -218,6 +218,7 @@ func (m *StringMerger) PartialMerge(leftOperand, rightOperand []byte) ([]byte, b
         return nil, false
     }
     rightOp := obj.(StringOperand)
+
     if leftOp.Command == rightOp.Command {
         mergeOp := StringOperand{Command: leftOp.Command}
         merged := false

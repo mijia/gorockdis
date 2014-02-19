@@ -7,6 +7,42 @@ import (
     "reflect"
 )
 
+func (rh *RocksDBHandler) RedisLlen(key []byte) (int, error) {
+    if err := rh.checkRedisCall(key); err != nil {
+        return 0, err
+    }
+    if err := rh.checkKeyType(key, kRedisList); err != nil {
+        return 0, err
+    }
+
+    data, err := rh._list_getData(key)
+    if err != nil {
+        return 0, err
+    }
+    return len(data), nil
+}
+
+func (rh *RocksDBHandler) RedisLindex(key []byte, index int) ([]byte, error) {
+    if err := rh.checkRedisCall(key); err != nil {
+        return nil, err
+    }
+    if err := rh.checkKeyType(key, kRedisList); err != nil {
+        return nil, err
+    }
+
+    data, err := rh._list_getData(key)
+    if err != nil {
+        return nil, err
+    }
+    if index < 0 {
+        index += len(data)
+    }
+    if index < 0 || index >= len(data) {
+        return []byte{}, nil
+    }
+    return data[index], nil
+}
+
 func (rh *RocksDBHandler) RedisLrange(key []byte, start, end int) ([][]byte, error) {
     if err := rh.checkRedisCall(key); err != nil {
         return nil, err
@@ -19,9 +55,20 @@ func (rh *RocksDBHandler) RedisLrange(key []byte, start, end int) ([][]byte, err
     if err != nil {
         return nil, err
     }
+    if len(data) == 0 {
+        return [][]byte{}, nil
+    }
     start = rh._list_getIndex(start, len(data), false)
     end = rh._list_getIndex(end, len(data), true)
     return data[start:end], nil
+}
+
+func (rh *RocksDBHandler) RedisLpop(key []byte) ([]byte, error) {
+    return rh._list_Pop(0, key)
+}
+
+func (rh *RocksDBHandler) RedisRpop(key []byte) ([]byte, error) {
+    return rh._list_Pop(-1, key)
 }
 
 func (rh *RocksDBHandler) RedisRpush(key, value []byte, values ...[]byte) (int, error) {
@@ -50,6 +97,31 @@ func (rh *RocksDBHandler) _list_getIndex(index, length int, isRightmost bool) in
         index = length
     }
     return index
+}
+
+func (rh *RocksDBHandler) _list_Pop(direction int, key []byte) ([]byte, error) {
+    if err := rh.checkRedisCall(key); err != nil {
+        return nil, err
+    }
+    if err := rh.checkKeyType(key, kRedisList); err != nil {
+        return nil, err
+    }
+
+    data, err := rh._list_getData(key)
+    if err != nil {
+        return nil, err
+    }
+    if len(data) == 0 {
+        return []byte{}, nil // this is not an error
+    }
+    popData := data[0]
+    if direction == -1 {
+        popData = data[len(data)-1]
+    }
+    if err := rh._list_doMerge(key, popData, kListOpRemove, direction); err != nil {
+        return nil, err
+    }
+    return popData, nil
 }
 
 func (rh *RocksDBHandler) _list_Push(direction int, key, value []byte, values ...[]byte) (int, error) {
@@ -116,6 +188,7 @@ func (rh *RocksDBHandler) _list_getData(key []byte) ([][]byte, error) {
 
 const (
     kListOpInsert = "insert"
+    kListOpRemove = "remove"
 )
 
 type ListOperand struct {
@@ -145,6 +218,14 @@ func (m *ListMerger) FullMerge(existingObject *RedisObject, operands [][]byte) b
                     listData = append([][]byte{op.Data}, listData...)
                 } else {
                     listData = append(listData, op.Data)
+                }
+            case kListOpRemove:
+                if len(listData) > 0 {
+                    if op.Index == 0 {
+                        listData = listData[1:]
+                    } else {
+                        listData = listData[:len(listData)-1]
+                    }
                 }
             }
         }

@@ -10,7 +10,7 @@ Dependencies:
 Support commands:
 * Keys: del, type, exists, keys
 * Strings: getset, get, set, mget, mset, append, incr, incrby, decr, decrby
-* Lists: lpush, rpush, lrange
+* Lists: lpush, rpush, lpop, rpop, lrange, lindex, llen
 
 Config:
 Please refer to rockdis.conf for example.

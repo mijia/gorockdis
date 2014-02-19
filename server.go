@@ -94,14 +94,14 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
                 if err != nil {
                     return err
                 }
-            }
-        }
-        request.RemoteAddress = clientAddr
-        if reply, err := s.ServeRequest(request); err != nil {
-            return err
-        } else {
-            if _, err := reply.WriteTo(conn); err != nil {
-                return err
+                request.RemoteAddress = clientAddr
+                if reply, err := s.ServeRequest(request); err != nil {
+                    return err
+                } else {
+                    if _, err := reply.WriteTo(conn); err != nil {
+                        return err
+                    }
+                }
             }
         }
     }

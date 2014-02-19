@@ -9,13 +9,11 @@ Dependencies:
 
 Support commands:
 * Keys: del, type, exists, keys
-* Strings: getset, get, set, mget, mset
+* Strings: getset, get, set, mget, mset, append, incr, incrby, decr, decrby
+* Lists: lpush, rpush, lrange
 
 Config:
 Please refer to rockdis.conf for example.
 $ go run *.go -conf=rockdis.conf
 
 Thanks for the idea and code from https://github.com/dotcloud/go-redis-server
-
-Notes:
-* Got stuck with merge funcs, since it gives me a segmentation violation, take test/merge_fail.go as a case.

@@ -110,6 +110,7 @@ func (rh *RocksDBHandler) Init() error {
 
     rh.dsMergers = make(map[string]DataStructureMerger)
     rh.dsMergers[kRedisString] = &StringMerger{}
+    rh.dsMergers[kRedisList] = &ListMerger{}
 
     if rh.maxMerge > 0 {
         rh.options.SetMaxSuccessiveMerges(rh.maxMerge)
@@ -207,23 +208,6 @@ func (rh *RocksDBHandler) FullMerge(key, existingValue []byte, operands [][]byte
     }
 
     return nil, false
-
-    // if redisObj.Type == kRedisString {
-    // }
-    // if redisObj.Type == kRedisList {
-    //     oldData := redisObj.Data.([][]byte)
-    //     newSize := len(oldData) + len(operands)
-    //     newData := make([][]byte, newSize)
-    //     for i := range oldData {
-    //         index := newSize - 1 - i
-    //         newData[index] = oldData[i]
-    //     }
-    //     for i := range operands {
-    //         index := newSize - 1 - len(oldData) - i
-    //         newData[index] = operands[i]
-    //     }
-    //     redisObj.Data = newData
-    // }
 }
 
 func (rh *RocksDBHandler) PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, bool) {
@@ -275,7 +259,6 @@ func (rh *RocksDBHandler) loadRedisObject(options *rocks.ReadOptions, key []byte
     } else {
         return RedisObject{}, err
     }
-
 }
 
 func (rh *RocksDBHandler) saveRedisObject(options *rocks.WriteOptions, key []byte, value interface{}, objType string) error {

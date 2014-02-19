@@ -16,7 +16,7 @@ func (rh *RocksDBHandler) RedisAppend(key, value []byte) (int, error) {
         return 0, err
     }
 
-    if err := doStringMergeOperation(rh.db, rh.getTypeKey(key), key, value, kStringOpAppend); err != nil {
+    if err := rh._string_doMerge(key, value, kStringOpAppend); err != nil {
         return 0, err
     }
     if data, err := rh.RedisGet(key); err == nil {
@@ -47,7 +47,7 @@ func (rh *RocksDBHandler) RedisIncrBy(key []byte, value int) ([]byte, error) {
     }
 
     data := []byte(strconv.Itoa(value))
-    if err := doStringMergeOperation(rh.db, rh.getTypeKey(key), key, data, kStringOpIncr); err != nil {
+    if err := rh._string_doMerge(key, data, kStringOpIncr); err != nil {
         return nil, err
     }
     return rh.RedisGet(key)
@@ -136,22 +136,19 @@ func (rh *RocksDBHandler) RedisMset(keyValues [][]byte) error {
     return nil
 }
 
-func doStringMergeOperation(db *rocks.DB, typeKey, key, value []byte, opCode string) error {
+func (rh *RocksDBHandler) _string_doMerge(key, value []byte, opCode string) error {
     options := rocks.NewDefaultWriteOptions()
     defer options.Destroy()
     batch := rocks.NewWriteBatch()
     defer batch.Destroy()
-    batch.Put(typeKey, []byte(kRedisString))
+    batch.Put(rh.getTypeKey(key), []byte(kRedisString))
     operand := StringOperand{opCode, value}
     if data, err := encode(operand); err != nil {
         return err
     } else {
         batch.Merge(key, data)
     }
-    if err := db.Write(options, batch); err != nil {
-        return err
-    }
-    return nil
+    return rh.db.Write(options, batch)
 }
 
 const (
@@ -174,7 +171,7 @@ type StringMerger struct {
 func (m *StringMerger) FullMerge(existingObject *RedisObject, operands [][]byte) bool {
     appendData, ok := existingObject.Data.([]byte)
     if !ok {
-        return false
+        appendData = []byte{}
     }
     incrData, err := strconv.ParseInt(string(appendData), 10, 64)
     if err != nil {
@@ -204,12 +201,10 @@ func (m *StringMerger) FullMerge(existingObject *RedisObject, operands [][]byte)
     switch lastOp {
     case kStringOpIncr:
         existingObject.Data = []byte(fmt.Sprintf("%d", incrData))
-        return true
     case kStringOpAppend:
         existingObject.Data = appendData
-        return true
     }
-    return false
+    return true
 }
 
 func (m *StringMerger) PartialMerge(leftOperand, rightOperand []byte) ([]byte, bool) {

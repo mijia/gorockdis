@@ -99,9 +99,9 @@ func (rh *RocksDBHandler) RedisKeys(pattern []byte) ([][]byte, error) {
     for ; it.Valid(); it.Next() {
         key := it.Key()
         dKey := rh.copySlice(key, false)
-        // if bytes.HasPrefix(dKey, kTypeKeyPrefix) {
-        //     continue
-        // }
+        if bytes.HasPrefix(dKey, kTypeKeyPrefix) {
+            continue
+        }
         if !bytes.HasPrefix(dKey, pattern) {
             break
         }

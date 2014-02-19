@@ -28,6 +28,7 @@ type Config struct {
         Compression     string
         CompactionStyle string
         MaxOpenFiles    int
+        MaxMerge        int
     }
 }
 

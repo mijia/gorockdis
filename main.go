@@ -13,7 +13,7 @@ import (
     "time"
 )
 
-type Config struct {
+type RockdisConfig struct {
     Server struct {
         Bind       string
         Port       int
@@ -37,11 +37,23 @@ func main() {
     flag.StringVar(&confName, "conf", "rockdis.conf", "Rockdis Configuration file")
     flag.Parse()
 
-    var config Config
+    var config RockdisConfig
     err := gcfg.ReadFileInto(&config, confName)
     if err != nil {
         log.Fatal(err)
     }
+    globalStat.configFile = confName
+    globalStat.config = config
+    globalStat.startTime = time.Now()
+    globalStat.qpsCommands = 0
+    globalStat.qpsStart = AtomicInt(time.Now().Unix())
+    go func(qpsInterval int) {
+        tc := time.Tick(time.Minute * time.Duration(qpsInterval))
+        for _ = range tc {
+            globalStat.qpsCommands.Set(0)
+            globalStat.qpsStart.Set(time.Now().Unix())
+        }
+    }(15)
 
     rock := NewRocksDBHandler(config)
     server := NewServer(config)
@@ -69,14 +81,23 @@ func main() {
 }
 
 type Stat struct {
-    Version string
+    version          string
+    configFile       string
+    config           RockdisConfig
+    startTime        time.Time
+    clients          AtomicInt
+    totalConnections AtomicInt
+    totalCommands    AtomicInt
+    keyHits          AtomicInt
+    keyMisses        AtomicInt
+    qpsCommands      AtomicInt
+    qpsStart         AtomicInt
 }
 
 var globalStat *Stat
 
 func init() {
-    globalStat = &Stat{Version: "0.0.1"}
-
+    globalStat = &Stat{version: "0.0.1"}
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     runtime.GOMAXPROCS(runtime.NumCPU())
     rand.Seed(time.Now().UnixNano())

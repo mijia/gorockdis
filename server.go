@@ -64,6 +64,8 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) ServeClient(conn net.Conn) (err error) {
+    globalStat.totalConnections.Add(1)
+    globalStat.clients.Add(1)
     clientAddr := conn.RemoteAddr().String()
     defer func() {
         if err != nil {
@@ -72,6 +74,7 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
         }
         conn.Close()
         conn = nil
+        globalStat.clients.Add(-1)
     }()
 
     for {
@@ -94,6 +97,8 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
                 if err != nil {
                     return err
                 }
+                globalStat.totalCommands.Add(1)
+                globalStat.qpsCommands.Add(1)
                 request.RemoteAddress = clientAddr
                 if reply, err := s.ServeRequest(request); err != nil {
                     return err
@@ -120,7 +125,7 @@ func (s *Server) Close() {
     log.Printf("[Server] Server Stopped.")
 }
 
-func NewServer(config Config) *Server {
+func NewServer(config RockdisConfig) *Server {
     s := &Server{}
     s.Methods = make(map[string]HandlerFn)
     s.Address = fmt.Sprintf("%s:%d", config.Server.Bind, config.Server.Port)

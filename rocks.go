@@ -35,7 +35,7 @@ type DataStructureMerger interface {
     PartialMerge(leftOperand, rightOperand []byte) ([]byte, bool)
 }
 
-func NewRocksDBHandler(config Config) *RocksDBHandler {
+func NewRocksDBHandler(config RockdisConfig) *RocksDBHandler {
     cacheSize, err := parseComputerSize(config.Database.MaxMemory)
     if err != nil {
         log.Fatalf("[Config] Format error for [Database] maxmemory=%s", config.Database.MaxMemory)
@@ -254,10 +254,12 @@ func (rh *RocksDBHandler) loadRedisObject(options *rocks.ReadOptions, key []byte
 
     data := rh.copySlice(slice, true)
     if data == nil || len(data) == 0 {
+        globalStat.keyMisses.Add(1)
         return RedisObject{}, ErrDoesNotExist
     }
 
     if obj, err := decode(data, reflect.TypeOf(RedisObject{})); err == nil {
+        globalStat.keyHits.Add(1)
         return obj.(RedisObject), nil
     } else {
         return RedisObject{}, err

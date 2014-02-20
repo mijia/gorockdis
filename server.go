@@ -81,18 +81,18 @@ func (s *Server) ServeClient(conn net.Conn) (err error) {
         conn.SetReadDeadline(time.Now())
         zeroByte := make([]byte, 0)
         if _, err := conn.Read(zeroByte); err == io.EOF {
-            log.Printf("[ServeClient] Detect a closed connection on %s", clientAddr)
+            // log.Printf("[ServeClient] Detect a closed connection on %s", clientAddr)
             break
         }
 
         conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
         request, err := NewRequest(conn)
         if err == io.EOF {
-            log.Printf("[ServeClient] Detect a closed connection on %s", clientAddr)
+            // log.Printf("[ServeClient] Detect a closed connection on %s", clientAddr)
             break
         } else {
             if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-                log.Printf("[ServeClient] Detect a Timeout client on %s, will check if she is closed.", clientAddr)
+                // log.Printf("[ServeClient] Detect a Timeout client on %s, will check if she is closed.", clientAddr)
             } else {
                 if err != nil {
                     return err

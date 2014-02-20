@@ -13,6 +13,7 @@ const (
     kRedisString = "string"
     kRedisList   = "list"
     kRedisHash   = "hash"
+    kRedisSet    = "set"
 )
 
 var (
@@ -112,6 +113,7 @@ func (rh *RocksDBHandler) Init() error {
     rh.dsMergers[kRedisString] = &StringMerger{}
     rh.dsMergers[kRedisList] = &ListMerger{}
     rh.dsMergers[kRedisHash] = &HashMerger{}
+    rh.dsMergers[kRedisSet] = &SetMerger{}
 
     if rh.maxMerge > 0 {
         rh.options.SetMaxSuccessiveMerges(rh.maxMerge)

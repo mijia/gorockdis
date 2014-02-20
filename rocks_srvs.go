@@ -51,9 +51,28 @@ func (rh *RocksDBHandler) RedisInfo() ([]byte, error) {
     }
     data = append(data, serverSection...)
 
+    // Runtime Section
+    var memStats runtime.MemStats
+    runtime.ReadMemStats(&memStats)
+    runtimeSection := []string{
+        "# Runtime",
+        fmt.Sprintf("cpu_count: %d", runtime.NumCPU()),
+        fmt.Sprintf("cgo_calls: %d", runtime.NumCgoCall()),
+        fmt.Sprintf("goroutine_count: %d", runtime.NumGoroutine()),
+        fmt.Sprintf("mem_alloc: %d", memStats.Alloc),
+        fmt.Sprintf("mem_total: %d", memStats.TotalAlloc),
+        fmt.Sprintf("mem_stack: %d", memStats.StackInuse),
+        fmt.Sprintf("mem_heap_alloc: %d", memStats.HeapAlloc),
+        fmt.Sprintf("mem_heap_objects: %d", memStats.HeapObjects),
+        fmt.Sprintf("mem_gc_count: %d", memStats.NumGC),
+        fmt.Sprintf("mem_gc_total_pause: %v", float64(memStats.PauseTotalNs)/float64(time.Millisecond)),
+        "",
+    }
+    data = append(data, runtimeSection...)
+
     // rocksdb section
     rocksSection := []string{
-        "# Rocksdb",
+        "# Rocksdb Config",
         "rocksdb_directory: " + globalStat.config.Database.DbDir,
         "max_memory: " + globalStat.config.Database.MaxMemory,
         "block_size: " + globalStat.config.Database.BlockSize,
@@ -61,7 +80,7 @@ func (rh *RocksDBHandler) RedisInfo() ([]byte, error) {
         "compaction_style: " + globalStat.config.Database.CompactionStyle,
         fmt.Sprintf("max_memtable_merge: %d", globalStat.config.Database.MaxMerge),
         "",
-        "# Rocksdb Internal",
+        "# Rocksdb Stats",
     }
     rocksStats := strings.Split(rh.db.GetProperty("rocksdb.stats"), "\n")
     rocksStats = rocksStats[len(rocksStats)-14:]

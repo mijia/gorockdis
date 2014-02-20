@@ -15,10 +15,16 @@ Support commands:
 * Sets : sadd, srem, smembers, scard, sismember
 
 Config:
+
 Please refer to rockdis.conf for example.
 ```
 $ go run *.go -conf=rockdis.conf
 ```
 Then, you can just use the redis-cli command line to try the server.
+
+Some Tests:
+* get/set: ops can reach 11000+ (process such redis commands in a second.), set takes average 1.5ms and get takes average 1.8ms.
+* lists: ops only can reach 4500+, lpush takes average 4.5ms and get takes average 7ms
+
 
 Thanks for the idea and code from https://github.com/dotcloud/go-redis-server

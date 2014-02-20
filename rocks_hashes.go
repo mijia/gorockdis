@@ -162,17 +162,18 @@ func (rh *RocksDBHandler) RedisHset(key, field, value []byte) (int, error) {
         return 0, err
     }
 
-    hashData, err := rh._hash_getData(key)
-    if err != nil {
-        return 0, err
-    }
-    _, exists := hashData[string(field)]
+    // This is hurting the performance for 1-5ms
+    // hashData, err := rh._hash_getData(key)
+    // if err != nil {
+    //     return 0, err
+    // }
+    // _, exists := hashData[string(field)]
     if err := rh._hash_doMerge(key, [][]byte{field, value}, kHashOpSet); err != nil {
         return 0, err
     }
-    if exists {
-        return 0, nil
-    }
+    // if exists {
+    //     return 0, nil
+    // }
     return 1, nil
 }
 

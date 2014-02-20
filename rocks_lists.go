@@ -125,11 +125,13 @@ func (rh *RocksDBHandler) _list_Push(direction int, key, value []byte, values ..
     if err := rh._list_doMerge(key, values, kListOpInsert, direction, 0); err != nil {
         return 0, err
     }
-    if data, err := rh._list_getData(key); err == nil {
-        return len(data), nil
-    } else {
-        return 0, err
-    }
+    // This will hurt the performance
+    // if data, err := rh._list_getData(key); err == nil {
+    //     return len(data), nil
+    // } else {
+    //     return 0, err
+    // }
+    return 1, nil
 }
 
 func (rh *RocksDBHandler) _list_doMerge(key []byte, value interface{}, opCode string, start, end int) error {

@@ -10,7 +10,7 @@ Dependencies:
 Support commands:
 * Keys: del, type, exists, keys
 * Strings: getset, get, set, mget, mset, append, incr, incrby, decr, decrby
-* Lists: lpush, rpush, lpop, rpop, lrange, lindex, llen
+* Lists: lpush, rpush, lpop, rpop, lrange, lindex, llen, ltrim
 * Hashes: hset, hget, hgetall, hexists, hdel, hkeys, hvals, hlen, hmget, hmset
 * Sets : sadd, srem, smembers, scard, sismember
 

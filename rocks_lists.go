@@ -58,8 +58,8 @@ func (rh *RocksDBHandler) RedisLrange(key []byte, start, end int) ([][]byte, err
     if len(data) == 0 {
         return [][]byte{}, nil
     }
-    start = rh._list_getIndex(start, len(data), false)
-    end = rh._list_getIndex(end, len(data), true)
+    start = __list_getIndex(start, len(data), false)
+    end = __list_getIndex(end, len(data), true)
     return data[start:end], nil
 }
 
@@ -79,24 +79,14 @@ func (rh *RocksDBHandler) RedisLpush(key, value []byte, values ...[]byte) (int, 
     return rh._list_Push(0, key, value, values...)
 }
 
-func (rh *RocksDBHandler) _list_getIndex(index, length int, isRightmost bool) int {
-    if index < 0 {
-        index += length
-        if index < 0 {
-            if isRightmost {
-                index = -1
-            } else {
-                index = 0
-            }
-        }
+func (rh *RocksDBHandler) RedisLtrim(key []byte, start, end int) error {
+    if err := rh.checkRedisCall(key); err != nil {
+        return err
     }
-    if isRightmost {
-        index++
+    if err := rh._list_doMerge(key, []byte{}, kListOpTrim, start, end); err != nil {
+        return err
     }
-    if index > length {
-        index = length
-    }
-    return index
+    return nil
 }
 
 func (rh *RocksDBHandler) _list_Pop(direction int, key []byte) ([]byte, error) {
@@ -118,7 +108,7 @@ func (rh *RocksDBHandler) _list_Pop(direction int, key []byte) ([]byte, error) {
     if direction == -1 {
         popData = data[len(data)-1]
     }
-    if err := rh._list_doMerge(key, popData, kListOpRemove, direction); err != nil {
+    if err := rh._list_doMerge(key, popData, kListOpRemove, direction, 0); err != nil {
         return nil, err
     }
     return popData, nil
@@ -132,7 +122,7 @@ func (rh *RocksDBHandler) _list_Push(direction int, key, value []byte, values ..
         return 0, err
     }
     values = append([][]byte{value}, values...)
-    if err := rh._list_doMerge(key, values, kListOpInsert, direction); err != nil {
+    if err := rh._list_doMerge(key, values, kListOpInsert, direction, 0); err != nil {
         return 0, err
     }
     if data, err := rh._list_getData(key); err == nil {
@@ -142,7 +132,7 @@ func (rh *RocksDBHandler) _list_Push(direction int, key, value []byte, values ..
     }
 }
 
-func (rh *RocksDBHandler) _list_doMerge(key []byte, value interface{}, opCode string, index int) error {
+func (rh *RocksDBHandler) _list_doMerge(key []byte, value interface{}, opCode string, start, end int) error {
     var values [][]byte
     if d1Slice, ok := value.([]byte); ok {
         values = [][]byte{d1Slice}
@@ -160,7 +150,7 @@ func (rh *RocksDBHandler) _list_doMerge(key []byte, value interface{}, opCode st
     defer batch.Destroy()
     batch.Put(rh.getTypeKey(key), []byte(kRedisList))
     for _, dValue := range values {
-        operand := ListOperand{opCode, index, dValue}
+        operand := ListOperand{opCode, start, end, dValue}
         if data, err := encode(operand); err == nil {
             batch.Merge(key, data)
         } else {
@@ -189,11 +179,13 @@ func (rh *RocksDBHandler) _list_getData(key []byte) ([][]byte, error) {
 const (
     kListOpInsert = "insert"
     kListOpRemove = "remove"
+    kListOpTrim   = "trim"
 )
 
 type ListOperand struct {
     Command string
-    Index   int
+    Start   int
+    End     int
     Data    []byte
 }
 
@@ -213,18 +205,24 @@ func (m *ListMerger) FullMerge(existingObject *RedisObject, operands [][]byte) b
             op := obj.(ListOperand)
             switch op.Command {
             case kListOpInsert:
-                if op.Index == 0 {
+                if op.Start == 0 {
                     listData = append([][]byte{op.Data}, listData...)
                 } else {
                     listData = append(listData, op.Data)
                 }
             case kListOpRemove:
                 if len(listData) > 0 {
-                    if op.Index == 0 {
+                    if op.Start == 0 {
                         listData = listData[1:]
                     } else {
                         listData = listData[:len(listData)-1]
                     }
+                }
+            case kListOpTrim:
+                if len(listData) > 0 {
+                    start := __list_getIndex(op.Start, len(listData), false)
+                    end := __list_getIndex(op.End, len(listData), true)
+                    listData = listData[start:end]
                 }
             }
         }
@@ -235,6 +233,26 @@ func (m *ListMerger) FullMerge(existingObject *RedisObject, operands [][]byte) b
 
 func (m *ListMerger) PartialMerge(leftOperand, rightOperand []byte) ([]byte, bool) {
     return nil, false
+}
+
+func __list_getIndex(index, length int, isRightmost bool) int {
+    if index < 0 {
+        index += length
+        if index < 0 {
+            if isRightmost {
+                index = -1
+            } else {
+                index = 0
+            }
+        }
+    }
+    if isRightmost {
+        index++
+    }
+    if index > length {
+        index = length
+    }
+    return index
 }
 
 var _ = fmt.Println

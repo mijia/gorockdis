@@ -68,7 +68,15 @@ func main() {
     }
 }
 
+type Stat struct {
+    Version string
+}
+
+var globalStat *Stat
+
 func init() {
+    globalStat = &Stat{Version: "0.0.1"}
+
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     runtime.GOMAXPROCS(runtime.NumCPU())
     rand.Seed(time.Now().UnixNano())
